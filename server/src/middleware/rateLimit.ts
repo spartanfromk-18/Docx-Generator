@@ -99,13 +99,9 @@ function applyHeaders(reply: FastifyReply, result: { remaining: number; resetSec
   reply.header("RateLimit-Reset", String(result.resetSec));
 }
 
-interface AuthedRequest extends FastifyRequest {
-  auth?: { orgId: string; userId: string | null; plan: Plan };
-}
-
 export function makeRateLimitHooks(limiter: RateLimiter) {
   /** General API limiter — attach with addHook('onRequest') after auth for authed routes. */
-  function generalByRequest(request: AuthedRequest, reply: FastifyReply): void {
+  function generalByRequest(request: FastifyRequest, reply: FastifyReply): void {
     const auth = request.auth;
     const subject = auth?.userId ?? (request.headers["x-forwarded-for"] as string) ?? request.ip;
     const plan = auth?.plan ?? "free";

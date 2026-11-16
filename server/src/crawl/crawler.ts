@@ -282,6 +282,7 @@ export async function crawlSource(
     palette,
     fonts,
     navigation,
+    flows,
     a11y,
     stats: {
       captured: captured.length,

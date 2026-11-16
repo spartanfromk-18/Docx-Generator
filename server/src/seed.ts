@@ -6,12 +6,13 @@
  * The demo run is executed through the REAL pipeline (PipelineRunner.runStage per
  * stage), so seeding also validates the engine, credit settlement and persistence.
  */
-import { repo, setRepo } from "./db/repo-holder.js";
-import { createRepo } from "./db/repo.js";
-import { initRuntime, runtime } from "./runtime.js";
+import { EventHub } from "./realtime/hub.js";
+import { LLMGateway } from "./llm/gateway.js";
+import { PipelineRunner } from "./pipeline/runner.js";
 import { plannedStages, runCost } from "./services/credits.js";
 import { plannedStageRow } from "./routes/runHelpers.js";
 import { uuidv7, nowIso, slugify, extractEntities } from "./util.js";
+import type { Repo } from "./db/repo.js";
 import type { RunRow } from "./types.js";
 
 export const DEMO_EMAIL = "demo@specforge.dev";
@@ -35,7 +36,7 @@ const INTAKE = {
   compliance_needs: "SOC 2 readiness; PCI SAQ-A via hosted fields",
 };
 
-export async function seedDemoData(): Promise<{ seeded: boolean; orgId?: string; runId?: string }> {
+export async function seed(repo: Repo): Promise<{ seeded: boolean; orgId?: string; runId?: string }> {
   const existing = await repo.findUserByEmail(DEMO_EMAIL);
   if (existing) {
     const orgs = await repo.listOrgsForUser(existing.id);
@@ -123,9 +124,9 @@ export async function seedDemoData(): Promise<{ seeded: boolean; orgId?: string;
   await repo.createRunWithReservation(run, stages, cost);
 
   // Execute the pipeline synchronously through the REAL runner (mock provider is fast).
-  const rt = runtime();
+  const runner = new PipelineRunner({ repo, hub: new EventHub(), gateway: new LLMGateway() });
   for (const stage of plannedStages("idea", docTypes)) {
-    await rt.runner.runStage(org.id, runId, stage);
+    await runner.runStage(org.id, runId, stage);
   }
   const finished = await repo.getRunSystem(runId);
   if (finished && !["reviewed", "reviewed_with_warnings"].includes(finished.status)) {
@@ -139,9 +140,9 @@ export async function seedDemoData(): Promise<{ seeded: boolean; orgId?: string;
 // Standalone execution: npm run seed
 const invokedDirectly = process.argv[1] && import.meta.url.replace(/\\/g, "/").endsWith(process.argv[1].replace(/\\/g, "/"));
 if (invokedDirectly) {
-  setRepo(await createRepo());
-  initRuntime();
-  const result = await seedDemoData();
+  const { createRepo } = await import("./db/repo.js");
+  const repo = await createRepo();
+  const result = await seed(repo);
   console.log(result.seeded ? "[seed] seeded fresh demo data." : "[seed] demo data already present; nothing to do.");
   await repo.close();
   process.exit(0);

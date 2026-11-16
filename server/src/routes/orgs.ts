@@ -1,14 +1,15 @@
-/** Organization routes. */
+﻿/** Organization routes. */
 import type { FastifyInstance } from "fastify";
-import { repo } from "../db/repo-holder.js";
 import { createOrgSchema } from "../schemas.js";
+import type { RouteDeps } from "./deps.js";
 import { parseBody, requireAuth } from "./helpers.js";
 import { writeAudit, auditEntry } from "../services/audit.js";
 import { uuidv7 } from "../util.js";
 
-export function registerOrgRoutes(app: FastifyInstance): void {
+export function registerOrgRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  const { repo, limiter, rate, hub, runner, gateway } = deps;
   app.post("/v1/orgs", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     if (!auth.userId) throw new (await import("../errors.js")).ApiError(401, "USER_REQUIRED", "Create organizations as a signed-in user.");
     const body = parseBody(createOrgSchema, request.body);
     let slug = body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50) || "org";
@@ -34,7 +35,7 @@ export function registerOrgRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/orgs", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     if (!auth.userId) return { items: [] };
     const orgs = await repo.listOrgsForUser(auth.userId);
     const members = await Promise.all(orgs.map(async (o) => ({ ...o, members: (await repo.listMembers(o.org.id)).length })));
@@ -52,7 +53,7 @@ export function registerOrgRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/orgs/:id/members", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const { id } = request.params as { id: string };
     if (id !== auth.orgId) throw new (await import("../errors.js")).ApiError(403, "ORG_MISMATCH", "Organization mismatch.");
     const members = await repo.listMembers(auth.orgId);

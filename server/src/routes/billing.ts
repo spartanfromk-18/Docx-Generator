@@ -1,14 +1,15 @@
-/** Billing routes: credit balance + ledger, mock checkout, mock Stripe webhook. */
+﻿/** Billing routes: credit balance + ledger, mock checkout, mock Stripe webhook. */
 import type { FastifyInstance } from "fastify";
-import { repo } from "../db/repo-holder.js";
 import { checkoutSchema, stripeWebhookSchema } from "../schemas.js";
+import type { Repo } from "../db/repo.js";
+import type { RouteDeps } from "./deps.js";
 import { parseBody, requireAuth, requireRole } from "./helpers.js";
 import { CREDIT_PACKS, PLANS } from "../services/credits.js";
 import { writeAudit, auditEntry } from "../services/audit.js";
 import { uuidv7, nowIso } from "../util.js";
 
 /** Mock checkout completion — mirrors what the Stripe webhook handler grants. */
-async function applyPurchase(orgId: string, kind: "plan" | "pack", plan?: string, credits?: number): Promise<{ creditsAdded: number; newPlan?: string }> {
+async function applyPurchase(repo: Repo, orgId: string, kind: "plan" | "pack", plan?: string, credits?: number): Promise<{ creditsAdded: number; newPlan?: string }> {
   if (kind === "plan" && (plan === "pro" || plan === "team")) {
     const info = PLANS[plan];
     const existing = await repo.getSubscription(orgId);
@@ -34,9 +35,10 @@ async function applyPurchase(orgId: string, kind: "plan" | "pack", plan?: string
   return { creditsAdded: pack.credits };
 }
 
-export function registerBillingRoutes(app: FastifyInstance): void {
+export function registerBillingRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  const { repo, limiter, rate, hub, runner, gateway } = deps;
   app.get("/v1/billing/credits", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const account = await repo.getCreditAccount(auth.orgId);
     const ledger = await repo.listLedger(auth.orgId, 50);
     const subscription = await repo.getSubscription(auth.orgId);
@@ -60,10 +62,10 @@ export function registerBillingRoutes(app: FastifyInstance): void {
   });
 
   app.post("/v1/billing/checkout", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "admin");
     const body = parseBody(checkoutSchema, request.body);
-    const result = await applyPurchase(auth.orgId, body.kind, body.plan, body.credits);
+    const result = await applyPurchase(repo, auth.orgId, body.kind, body.plan, body.credits);
     await writeAudit(repo, [
       auditEntry({
         org_id: auth.orgId,
@@ -137,7 +139,7 @@ export function registerBillingRoutes(app: FastifyInstance): void {
     const orgId = obj.client_reference_id;
     if (orgId && event.type === "checkout.session.completed") {
       const kind = obj.kind === "pack" ? "pack" : "plan";
-      await applyPurchase(orgId, kind, obj.plan, obj.credits);
+      await applyPurchase(repo, orgId, kind, obj.plan, obj.credits);
     }
     await repo.updateWebhookEvent(webhookId, { status: "processed", processed_at: nowIso(), attempts: 1 });
     reply.code(200).send({ received: true });

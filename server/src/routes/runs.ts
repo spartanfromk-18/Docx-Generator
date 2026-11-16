@@ -1,10 +1,9 @@
-/** Run routes: create (202 with credit reservation), status, SSE, cancel, retry. */
+﻿/** Run routes: create (202 with credit reservation), status, SSE, cancel, retry. */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { repo } from "../db/repo-holder.js";
 import { createRunSchema } from "../schemas.js";
+import type { RouteDeps } from "./deps.js";
 import { parseBody, requireAuth, requireRole } from "./helpers.js";
 import { notFound, unprocessable, tooManyRequests, badRequest } from "../errors.js";
-import { runtime } from "../runtime.js";
 import { CONCURRENT_RUN_LIMITS, plannedStages, runCost, STAGE_COSTS } from "../services/credits.js";
 import { writeAudit, auditEntry, emitEvents, outboxEvent } from "../services/audit.js";
 import { plannedStageRow } from "./runHelpers.js";
@@ -13,9 +12,10 @@ import { InsufficientCredits } from "../db/repo.js";
 import { uuidv7, nowIso } from "../util.js";
 import type { RunRow, StageName } from "../types.js";
 
-export function registerRunRoutes(app: FastifyInstance): void {
+export function registerRunRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  const { repo, limiter, rate, hub, runner, gateway } = deps;
   app.post("/v1/projects/:id/runs", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id } = request.params as { id: string };
     const project = await repo.getProject(auth.orgId, id);
@@ -35,7 +35,7 @@ export function registerRunRoutes(app: FastifyInstance): void {
     }
 
     // Sliding-window run creation limit per plan (TRD 2.3).
-    runtime().rateLimitHooks.guardResult(reply, runtime().limiter.runCreation(auth.plan, auth.orgId), 30);
+    rate.guardResult(reply, limiter.runCreation(auth.plan, auth.orgId), 30);
 
     const active = await repo.countActiveRuns(auth.orgId);
     const cap = CONCURRENT_RUN_LIMITS[auth.plan] ?? 1;
@@ -134,7 +134,7 @@ export function registerRunRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/runs/:id", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const { id } = request.params as { id: string };
     const run = await repo.getRun(auth.orgId, id);
     if (!run) throw notFound("Run not found.");
@@ -151,14 +151,14 @@ export function registerRunRoutes(app: FastifyInstance): void {
 
   // SSE stream with Last-Event-ID resume from the hub ring buffer.
   app.get("/v1/runs/:id/events", async (request: FastifyRequest, reply: FastifyReply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const { id } = request.params as { id: string };
     const run = await repo.getRun(auth.orgId, id);
     if (!run) throw notFound("Run not found.");
 
-    runtime().rateLimitHooks.guardResult(
+    rate.guardResult(
       reply,
-      runtime().limiter.sseConnect(auth.userId ?? request.ip),
+      limiter.sseConnect(auth.userId ?? request.ip),
       30,
       "RATE_LIMITED",
     );
@@ -177,7 +177,7 @@ export function registerRunRoutes(app: FastifyInstance): void {
     const lastEventId = Number.isFinite(rawId) ? rawId : null;
 
     let closed = false;
-    const unsubscribe = runtime().hub.subscribe(id, lastEventId, (event) => {
+    const unsubscribe = hub.subscribe(id, lastEventId, (event) => {
       if (closed) return;
       reply.raw.write(`id: ${event.id}\nevent: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`);
     });
@@ -203,7 +203,7 @@ export function registerRunRoutes(app: FastifyInstance): void {
   });
 
   app.post("/v1/runs/:id/cancel", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id } = request.params as { id: string };
     const run = await repo.getRun(auth.orgId, id);
@@ -212,7 +212,7 @@ export function registerRunRoutes(app: FastifyInstance): void {
       throw unprocessable("RUN_FINISHED", `Run already finished as ${run.status}.`);
     }
     await repo.updateRun(auth.orgId, id, { cancel_requested_at: nowIso() });
-    await runtime().runner.cancelNow(auth.orgId, id);
+    await runner.cancelNow(auth.orgId, id);
     await writeAudit(repo, [
       auditEntry({
         org_id: auth.orgId,
@@ -228,7 +228,7 @@ export function registerRunRoutes(app: FastifyInstance): void {
   });
 
   app.post("/v1/runs/:id/stages/:stage/retry", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id, stage } = request.params as { id: string; stage: string };
     const run = await repo.getRun(auth.orgId, id);

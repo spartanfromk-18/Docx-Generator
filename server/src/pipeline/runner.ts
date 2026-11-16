@@ -361,6 +361,7 @@ export class PipelineRunner {
       palette: stats.palette ?? [],
       fonts: stats.fonts ?? [],
       navigation: stats.navigation ?? [],
+      flows: stats.flows ?? [],
       a11y: stats.a11y ?? { critical: 0, serious: 0, moderate: 0 },
       stats: stats.stats ?? { captured: 0, skipped: 0, duration_ms: 0 },
       authWall: false,

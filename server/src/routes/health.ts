@@ -1,30 +1,29 @@
 /** Deep health check: DB, engine, LLM providers, hub, seed presence. */
 import type { FastifyInstance } from "fastify";
-import { repo } from "../db/repo-holder.js";
-import { runtime } from "../runtime.js";
 import { buildProviderChain } from "../llm/providers.js";
 import { env } from "../env.js";
 import { DEMO_EMAIL } from "../seed.js";
+import type { HealthDeps } from "./deps.js";
 
-export function registerHealthRoutes(app: FastifyInstance): void {
+export function registerHealthRoutes(app: FastifyInstance, deps: HealthDeps): void {
   app.get("/v1/health/deep", async (_request, reply) => {
-    const rt = runtime();
+    const { repo, hub, engine, startedAt } = deps;
     const checks: Record<string, { ok: boolean; detail: string; latency_ms?: number }> = {};
 
     const dbStart = Date.now();
     const dbHealth = await repo.health();
     checks.database = { ...dbHealth, latency_ms: Date.now() - dbStart };
 
-    const engineStats = rt.engine.stats();
-    checks.engine = { ok: !rt.engine.stopped, detail: `running, ${engineStats.inflight} in flight` };
+    const engineStats = engine.stats();
+    checks.engine = { ok: !engine.stopped, detail: `running, ${engineStats.inflight} in flight, up ${Math.round((Date.now() - startedAt) / 1000)}s` };
 
     const chain = buildProviderChain([...env.llmProviderOrder]);
     checks.llm = {
       ok: chain.length > 0,
-      detail: `${chain.map((p) => `${p.name}:${p.model ?? ""}`).join(", ")}${rt.gateway.isFaultInjected() ? " (fault injection active)" : ""}`,
+      detail: chain.map((p) => p.name).join(", ") || "none configured",
     };
 
-    const hubStats = rt.hub.stats();
+    const hubStats = hub.stats();
     checks.realtime = { ok: true, detail: `${hubStats.streams} stream(s), ${hubStats.subscribers} subscriber(s), ${hubStats.bufferedEvents} buffered` };
 
     const seedProbe = await repo.findUserByEmail(DEMO_EMAIL);

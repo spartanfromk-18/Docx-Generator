@@ -1,7 +1,7 @@
-/** Share-link routes: create, revoke, and the public read-only viewer. */
+﻿/** Share-link routes: create, revoke, and the public read-only viewer. */
 import type { FastifyInstance } from "fastify";
-import { repo } from "../db/repo-holder.js";
 import { createShareLinkSchema, shareUnlockSchema } from "../schemas.js";
+import type { RouteDeps } from "./deps.js";
 import { parseBody, requireAuth, requireRole } from "./helpers.js";
 import { notFound, unprocessable, unauthorized } from "../errors.js";
 import { writeAudit, auditEntry } from "../services/audit.js";
@@ -10,9 +10,10 @@ import { randomToken, sha256Hex, uuidv7, nowIso, safeEqual } from "../util.js";
 /** In-memory unlock sessions for password-protected links (dev-grade). */
 const UNLOCKED = new Set<string>();
 
-export function registerShareRoutes(app: FastifyInstance): void {
+export function registerShareRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  const { repo, limiter, rate, hub, runner, gateway } = deps;
   app.post("/v1/documents/:id/share-links", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id } = request.params as { id: string };
     const body = parseBody(createShareLinkSchema, request.body);
@@ -55,7 +56,7 @@ export function registerShareRoutes(app: FastifyInstance): void {
   });
 
   app.delete("/v1/share-links/:id", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id } = request.params as { id: string };
     const ok = await repo.revokeShareLink(auth.orgId, id);

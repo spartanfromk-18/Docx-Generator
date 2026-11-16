@@ -11,12 +11,8 @@ import { nowIso, uuidv7, sha256Hex } from "../util.js";
 
 const EXEMPT = [/^\/v1\/auth\//, /^\/v1\/webhooks\//, /^\/v1\/s\//];
 
-interface AuthedRequest extends FastifyRequest {
-  auth?: { orgId: string };
-}
-
 export function registerIdempotency(app: FastifyInstance, repo: Repo): void {
-  app.addHook("preHandler", async (request: AuthedRequest, reply: FastifyReply) => {
+  app.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
     const method = request.method.toUpperCase();
     if (!["POST", "PATCH", "DELETE"].includes(method)) return;
     const url = request.routeOptions?.url ?? request.url.split("?")[0];
@@ -28,6 +24,7 @@ export function registerIdempotency(app: FastifyInstance, repo: Repo): void {
     if (typeof key !== "string" || key.length < 8 || key.length > 64) {
       throw badRequest("IDEMPOTENCY_KEY_REQUIRED", "Mutating requests require an Idempotency-Key header (8-64 chars).");
     }
+    if (!request.auth) return; // auth guard runs before this via route-level preHandler ordering
     const rawBody = typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
     const requestHash = sha256Hex(rawBody);
 

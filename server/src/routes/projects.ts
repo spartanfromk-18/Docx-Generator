@@ -1,15 +1,16 @@
-/** Project routes with keyset pagination and ETag support. */
+﻿/** Project routes with keyset pagination and ETag support. */
 import type { FastifyInstance } from "fastify";
-import { repo } from "../db/repo-holder.js";
+import type { RouteDeps } from "./deps.js";
 import { createProjectSchema, updateProjectSchema, listProjectsQuery } from "../schemas.js";
 import { parseBody, parseQuery, requireAuth, requireRole, sendWithEtag } from "./helpers.js";
 import { notFound } from "../errors.js";
 import { writeAudit, auditEntry } from "../services/audit.js";
 import { uuidv7 } from "../util.js";
 
-export function registerProjectRoutes(app: FastifyInstance): void {
+export function registerProjectRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  const { repo, limiter, rate, hub, runner, gateway } = deps;
   app.post("/v1/projects", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const body = parseBody(createProjectSchema, request.body);
     const project = await repo.insertProject({
@@ -41,7 +42,7 @@ export function registerProjectRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/projects", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const query = parseQuery(listProjectsQuery, request);
     const { items, nextCursor } = await repo.listProjects(auth.orgId, {
       q: query.q,
@@ -50,7 +51,7 @@ export function registerProjectRoutes(app: FastifyInstance): void {
     });
     const summaries = await repo.projectSummaries(
       auth.orgId,
-      items.map((p) => p.id),
+      items.map((p: { id: string }) => p.id),
     );
     return {
       items: items.map((p) => ({
@@ -63,7 +64,7 @@ export function registerProjectRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/projects/:id", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const { id } = request.params as { id: string };
     const project = await repo.getProject(auth.orgId, id);
     if (!project) throw notFound("Project not found.");
@@ -74,7 +75,7 @@ export function registerProjectRoutes(app: FastifyInstance): void {
   });
 
   app.patch("/v1/projects/:id", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id } = request.params as { id: string };
     const body = parseBody(updateProjectSchema, request.body);
@@ -95,7 +96,7 @@ export function registerProjectRoutes(app: FastifyInstance): void {
   });
 
   app.delete("/v1/projects/:id", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "admin");
     const { id } = request.params as { id: string };
     const ok = await repo.softDeleteProject(auth.orgId, id);

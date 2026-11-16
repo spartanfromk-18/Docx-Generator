@@ -1,19 +1,19 @@
-/** Document routes: read (ETag), versions, new version (optimistic lock), section regeneration. */
+﻿/** Document routes: read (ETag), versions, new version (optimistic lock), section regeneration. */
 import type { FastifyInstance } from "fastify";
-import { repo } from "../db/repo-holder.js";
 import { createVersionSchema, regenerateSectionSchema } from "../schemas.js";
+import type { RouteDeps } from "./deps.js";
 import { parseBody, requireAuth, requireRole, sendWithEtag } from "./helpers.js";
 import { notFound, conflict, unprocessable, paymentRequired } from "../errors.js";
 import { SECTION_REGEN_COST } from "../services/credits.js";
 import { writeAudit, auditEntry } from "../services/audit.js";
-import { runtime } from "../runtime.js";
 import { InsufficientCredits } from "../db/repo.js";
 import { DOC_OUTPUT_SCHEMA, buildMockContext } from "../pipeline/stages.js";
 import { uuidv7 } from "../util.js";
 
-export function registerDocumentRoutes(app: FastifyInstance): void {
+export function registerDocumentRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  const { repo, limiter, rate, hub, runner, gateway } = deps;
   app.get("/v1/documents/:id", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const { id } = request.params as { id: string };
     const document = await repo.getDocument(auth.orgId, id);
     if (!document) throw notFound("Document not found.");
@@ -23,7 +23,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/documents/:id/versions", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const { id } = request.params as { id: string };
     const document = await repo.getDocument(auth.orgId, id);
     if (!document) throw notFound("Document not found.");
@@ -32,7 +32,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/documents/:id/versions/:n", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const { id, n } = request.params as { id: string; n: string };
     const document = await repo.getDocument(auth.orgId, id);
     if (!document) throw notFound("Document not found.");
@@ -46,7 +46,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
   });
 
   app.post("/v1/documents/:id/versions", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id } = request.params as { id: string };
     const body = parseBody(createVersionSchema, request.body);
@@ -79,7 +79,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
   });
 
   app.post("/v1/documents/:id/sections/:sid/regenerate", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id, sid } = request.params as { id: string; sid: string };
     const body = parseBody(regenerateSectionSchema, request.body);
@@ -150,7 +150,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         updated_at: new Date().toISOString(),
         consistency: null,
       };
-      const regenerated = await runtime().gateway.generateStructured({
+      const regenerated = await gateway.generateStructured({
         run: mockRun,
         stage,
         schema: DOC_OUTPUT_SCHEMA,
@@ -175,7 +175,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         await repo.releaseCredits(auth.orgId, null, SECTION_REGEN_COST, `regen-refund:${sid}:${Date.now()}`);
         throw conflict("VERSION_CONFLICT", "The document changed during regeneration; credits were refunded.");
       }
-      runtime().hub.publish(document_.run_id ?? document_.id, "section.completed", {
+      hub.publish(document_.run_id ?? document_.id, "section.completed", {
         document: docType,
         section_id: found.section.id,
         heading: found.section.heading,

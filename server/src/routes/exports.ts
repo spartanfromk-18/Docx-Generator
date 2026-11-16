@@ -1,9 +1,9 @@
-/** Export routes: single-document export (sync) and full-run bundle (202 + poll). */
+﻿/** Export routes: single-document export (sync) and full-run bundle (202 + poll). */
 import type { FastifyInstance } from "fastify";
 import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { repo } from "../db/repo-holder.js";
 import { createExportSchema, createBundleSchema } from "../schemas.js";
+import type { RouteDeps } from "./deps.js";
 import { parseBody, requireAuth, requireRole } from "./helpers.js";
 import { notFound, unprocessable } from "../errors.js";
 import { env } from "../env.js";
@@ -20,9 +20,10 @@ const MIME: Record<string, string> = {
   pdf: "application/pdf",
 };
 
-export function registerExportRoutes(app: FastifyInstance): void {
+export function registerExportRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  const { repo, limiter, rate, hub, runner, gateway } = deps;
   app.post("/v1/documents/:id/exports", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "viewer");
     const { id } = request.params as { id: string };
     const body = parseBody(createExportSchema, request.body);
@@ -77,7 +78,7 @@ export function registerExportRoutes(app: FastifyInstance): void {
   });
 
   app.post("/v1/runs/:id/bundle", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "viewer");
     const { id } = request.params as { id: string };
     const body = parseBody(createBundleSchema, request.body);
@@ -132,7 +133,7 @@ export function registerExportRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/exports/:id", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const { id } = request.params as { id: string };
     const row = await repo.getExport(auth.orgId, id);
     if (!row) throw notFound("Export not found.");

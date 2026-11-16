@@ -1,17 +1,17 @@
-/** Reference-mode source routes: create (202), preview, confirm. */
+﻿/** Reference-mode source routes: create (202), preview, confirm. */
 import type { FastifyInstance } from "fastify";
-import { repo } from "../db/repo-holder.js";
 import { createSourceSchema } from "../schemas.js";
+import type { RouteDeps } from "./deps.js";
 import { parseBody, requireAuth, requireRole } from "./helpers.js";
 import { notFound, unprocessable, badRequest, ApiError } from "../errors.js";
-import { runtime } from "../runtime.js";
 import { assertPublicUrl } from "../crawl/urlGuard.js";
 import { writeAudit, auditEntry } from "../services/audit.js";
 import { uuidv7, nowIso } from "../util.js";
 
-export function registerSourceRoutes(app: FastifyInstance): void {
+export function registerSourceRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  const { repo, limiter, rate, hub, runner, gateway } = deps;
   app.post("/v1/projects/:id/sources", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id } = request.params as { id: string };
     const project = await repo.getProject(auth.orgId, id);
@@ -28,8 +28,8 @@ export function registerSourceRoutes(app: FastifyInstance): void {
     }
 
     // Per-plan + per-host crawl limits (TRD 2.3).
-    runtime().rateLimitHooks.guardResult(reply, runtime().limiter.sourceSubmit(auth.plan, auth.orgId), 10);
-    runtime().rateLimitHooks.guardResult(reply, runtime().limiter.sourcePerHost(auth.orgId, guarded.host), 2);
+    rate.guardResult(reply, limiter.sourceSubmit(auth.plan, auth.orgId), 10);
+    rate.guardResult(reply, limiter.sourcePerHost(auth.orgId, guarded.host), 2);
 
     const source = await repo.insertSource({
       id: uuidv7(),
@@ -72,7 +72,7 @@ export function registerSourceRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/sources/:id", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const { id } = request.params as { id: string };
     const source = await repo.getSource(auth.orgId, id);
     if (!source) throw notFound("Source not found.");
@@ -95,7 +95,7 @@ export function registerSourceRoutes(app: FastifyInstance): void {
   });
 
   app.post("/v1/sources/:id/confirm", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "editor");
     const { id } = request.params as { id: string };
     parseBody((await import("../schemas.js")).confirmSourceSchema, request.body);

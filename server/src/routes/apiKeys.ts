@@ -1,15 +1,16 @@
-/** API-key management: create (secret shown once), list, revoke. */
+﻿/** API-key management: create (secret shown once), list, revoke. */
 import type { FastifyInstance } from "fastify";
-import { repo } from "../db/repo-holder.js";
 import { createApiKeySchema } from "../schemas.js";
+import type { RouteDeps } from "./deps.js";
 import { parseBody, requireAuth, requireRole } from "./helpers.js";
 import { notFound } from "../errors.js";
 import { writeAudit, auditEntry } from "../services/audit.js";
 import { randomHex, sha256Hex, uuidv7, nowIso } from "../util.js";
 
-export function registerApiKeyRoutes(app: FastifyInstance): void {
+export function registerApiKeyRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  const { repo, limiter, rate, hub, runner, gateway } = deps;
   app.post("/v1/api-keys", async (request, reply) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "admin");
     const body = parseBody(createApiKeySchema, request.body);
     const prefix = randomHex(8);
@@ -50,7 +51,7 @@ export function registerApiKeyRoutes(app: FastifyInstance): void {
   });
 
   app.get("/v1/api-keys", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     const keys = await repo.listApiKeys(auth.orgId);
     return {
       items: keys.map((k) => ({
@@ -65,7 +66,7 @@ export function registerApiKeyRoutes(app: FastifyInstance): void {
   });
 
   app.delete("/v1/api-keys/:id", async (request) => {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(deps, request);
     requireRole(auth, "admin");
     const { id } = request.params as { id: string };
     const ok = await repo.revokeApiKey(auth.orgId, id);
