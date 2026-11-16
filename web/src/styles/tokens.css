@@ -1,0 +1,18 @@
+:root{
+  --color-bg:#FFFFFF; --color-surface:#F7F8FA;
+  --color-text-primary:#111827; --color-text-secondary:#4B5563;
+  --color-border:#E5E7EB; --color-border-strong:#6B7280;
+  --color-brand:#1F3A5F; --color-brand-contrast:#FFFFFF;
+  --color-link:#1D4ED8; --color-success:#0F7B4D; --color-warning:#8A5A00;
+  --color-danger:#B42318; --color-info:#0B6E8F;
+  --color-success-bg:#E3F4EA; --color-warning-bg:#FFF6E0; --color-danger-bg:#FDECEA; --color-info-bg:#E8F4F8;
+  --font-sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--space-12:48px;--space-16:64px;
+  --radius-sm:6px;--radius-md:10px;--radius-lg:16px;--radius-full:9999px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.08);--shadow-2:0 4px 12px rgba(0,0,0,.12);--shadow-3:0 12px 32px rgba(0,0,0,.18);
+  --duration-fast:120ms;--duration-base:200ms;--duration-slow:320ms;
+  --ease:cubic-bezier(.2,0,0,1);
+  --z-sticky:100;--z-dropdown:200;--z-drawer:300;--z-modal:400;--z-toast:500;
+}
+@media (prefers-color-scheme:dark){:root{--color-bg:#0B1220;--color-surface:#121A2B;--color-text-primary:#E5E7EB;--color-text-secondary:#A8B0BF;--color-border:#243045;--color-border-strong:#7C879B;--color-brand:#8FB4FF;--color-brand-contrast:#0B1220;--color-link:#60A5FA;--color-success:#4ADE80;--color-warning:#FBBF24;--color-danger:#F87171;--color-info:#60A5FA;--color-success-bg:#12321F;--color-warning-bg:#3A2A00;--color-danger-bg:#3A1512;--color-info-bg:#12283A;}}
