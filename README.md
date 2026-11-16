@@ -128,6 +128,22 @@ git remote add origin https://github.com/<you>/specforge.git
 git push -u origin main
 ```
 
+## Project status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Auth (dev-login, RS256 JWT, JWKS, API keys) | REAL | Fully implemented and tested |
+| Credits ledger (reserve → settle/release) | REAL | Fully implemented and tested |
+| DOCX / MD / ZIP export | REAL | AST-based DOCX via `docx` package; tested end to end |
+| Crawler (SSRF-guarded, robots.txt, palette/fonts/nav) | REAL | Code implemented; not yet tested on a live URL |
+| LLM (Anthropic / OpenAI / mock) | MOCK BY DEFAULT | `mock` provider is deterministic and offline; real adapters exist behind `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` |
+| Database (PostgreSQL + RLS) | MOCK BY DEFAULT | `USE_MEMORY_DB=true` in dev; Postgres repo exists, untested (no Docker on this machine) |
+| Stripe (checkout + webhooks) | MOCK BY DEFAULT | Grants credits in dev; no real charges |
+| Postgres via Docker | NOT YET TESTED | `docker-compose.yml` + `scripts/init_db.sql` exist; couldn't run here |
+| Reference Mode on a live URL | NOT YET TESTED | Crawler code written; needs a public URL + Pro org |
+| UI flow tests | NOT YET TESTED | 5 API smoke tests pass; no browser test runner yet |
+| Email / magic-link login | NOT BUILT | Dev login (`POST /v1/auth/dev-login`) is the auth entry point |
+
 ## Spec compliance map
 
 | Blueprint doc | Implemented by |
