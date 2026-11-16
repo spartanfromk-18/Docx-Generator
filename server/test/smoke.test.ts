@@ -1,15 +1,22 @@
 /**
- * API smoke tests — hit a running SpecForge server (localhost:8787).
- * Run:  npm run test --workspace server   (server must be booted first)
- * Verifies the TRD §2.4 contract end to end on memory DB + mock LLM.
+ * API smoke tests — self-contained: starts the SpecForge server itself
+ * (memory DB + mock LLM) on a random free port before the tests and stops it
+ * after. Verifies the TRD §2.4 contract end to end.
+ *
+ * Run:  npm run test --workspace server   (no server needs to be running)
  */
-import { describe, it } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assertStrict from "node:assert/strict";
+import { createApp } from "../src/index.ts";
 
-const BASE = "http://localhost:8787/v1";
 let token = "";
 let orgId = "";
 let projectId = "";
+
+let app: Awaited<ReturnType<typeof createApp>>["app"];
+let repo: Awaited<ReturnType<typeof createApp>>["repo"];
+let engine: Awaited<ReturnType<typeof createApp>>["engine"];
+let BASE = "";
 
 const LONG_IDEA =
   "A personal finance dashboard that auto-categorizes transactions, sets monthly budgets, and alerts when spending exceeds 90% of budget, with CSV export and multi-account support. Users link bank accounts, transactions are categorized by a rules engine, and weekly digest emails summarize spending by category.";
@@ -26,6 +33,43 @@ async function json(path: string, init: RequestInit = {}): Promise<any> {
   assertStrict.ok(res.ok, `${init.method ?? "GET"} ${path} → ${res.status}: ${text}`);
   return JSON.parse(text);
 }
+
+function serverPort(): number {
+  const addr = app.server.address();
+  if (typeof addr === "string") {
+    // Unix socket path — not expected here.
+    throw new Error(`Unexpected socket address: ${addr}`);
+  }
+  return addr.port;
+}
+
+before(async () => {
+  ({ app, repo, engine } = await createApp());
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  BASE = `http://127.0.0.1:${serverPort()}/v1`;
+
+  // Seed demo data so /v1/health/deep reports seed.ok === true.
+  const { seed } = await import("../src/seed.js");
+  await seed(repo);
+});
+
+after(async () => {
+  try {
+    await app.close();
+  } catch {
+    /* best effort */
+  }
+  try {
+    await repo.close();
+  } catch {
+    /* best effort */
+  }
+  try {
+    await engine.stop();
+  } catch {
+    /* best effort */
+  }
+});
 
 describe("SpecForge API smoke", () => {
   it("dev-login issues a JWT and grants 3 credits", async () => {

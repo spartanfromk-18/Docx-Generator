@@ -1,7 +1,13 @@
 /**
  * SpecForge API server — Fastify 5 entrypoint.
  * Zero-config boot: memory DB + mock LLM provider unless env vars say otherwise.
+ *
+ * `createApp()` builds and wires the full application (repo, engine, gateway,
+ * hub, guards, limiter, idempotency, every route) and returns the app plus its
+ * dependencies. It does NOT listen or seed — callers (including tests) control
+ * the listen port and lifecycle. `main()` is the direct-run entrypoint.
  */
+import { pathToFileURL } from "node:url";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { env } from "./env.js";
@@ -27,8 +33,15 @@ import { registerApiKeyRoutes } from "./routes/apiKeys.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { seed } from "./seed.js";
 
-async function main(): Promise<void> {
-  const startedAt = Date.now();
+export interface AppDeps {
+  app: Fastify.FastifyInstance;
+  repo: Awaited<ReturnType<typeof createRepo>>;
+  engine: Engine;
+  hub: EventHub;
+}
+
+/** Build and wire the full application without listening or seeding. */
+export async function createApp(): Promise<AppDeps> {
   const app = Fastify({
     logger: false,
     bodyLimit: 2 * 1024 * 1024,
@@ -73,7 +86,13 @@ async function main(): Promise<void> {
   registerShareRoutes(app, deps);
   registerBillingRoutes(app, deps);
   registerApiKeyRoutes(app, deps);
-  registerHealthRoutes(app, { repo, hub, engine, startedAt });
+  registerHealthRoutes(app, { repo, hub, engine, startedAt: Date.now() });
+
+  return { app, repo, engine, hub };
+}
+
+async function main(): Promise<void> {
+  const { app, repo, engine, hub } = await createApp();
 
   const shutdown = async (signal: string) => {
     console.log(`[boot] ${signal} received — shutting down`);
@@ -105,4 +124,9 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+// Only run the server when this file is executed directly, not when imported
+// (e.g. by the smoke test, which starts the app itself on port 0).
+const isDirectExecution = pathToFileURL(process.argv[1] ?? "").href === import.meta.url;
+if (isDirectExecution) {
+  void main();
+}
