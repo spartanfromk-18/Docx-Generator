@@ -1,4 +1,4 @@
-# SpecForge
+# Docx-Generator
 
 **AI documentation generator for developers and SaaS builders.** Describe a project idea (or paste the URL of an existing product) and SpecForge produces a complete, internally consistent engineering specification set in minutes:
 
